@@ -3,6 +3,24 @@ use rand::Rng;
 use std::fs::File;
 use std::io::Write;
 
+
+macro_rules! load_column_vector {
+    ($b:expr, $n:expr, $j:expr, $k:expr) => {{
+        let b0 = *$b.get_unchecked($k * $n + $j);
+        let b1 = *$b.get_unchecked(($k + 1) * $n + $j);
+        let b2 = *$b.get_unchecked(($k + 2) * $n + $j);
+        let b3 = *$b.get_unchecked(($k + 3) * $n + $j);
+        
+        let mut b_vec = vdupq_n_f32(0.0);
+        b_vec = vsetq_lane_f32::<0>(b0, b_vec);
+        b_vec = vsetq_lane_f32::<1>(b1, b_vec);
+        b_vec = vsetq_lane_f32::<2>(b2, b_vec);
+        b_vec = vsetq_lane_f32::<3>(b3, b_vec);
+        b_vec
+    }};
+}
+
+
 #[target_feature(enable = "neon")]
 unsafe fn add_arrays_simd(a: &[f32], b: &[f32], c: &mut [f32]) {
     // NEON intrinsics for ARM architecture
@@ -94,17 +112,8 @@ unsafe fn multiply_matrices_simd(a: &[f32], b: &[f32], c: &mut [f32], n: usize) 
             for k in (0..n).step_by(4) {
                 // Load 4 elements from matrix A into a NEON register
                 let a_vec = vld1q_f32(a.as_ptr().add(i * n + k));
-                // Load elements individually to form a column vector from matrix B
-                let b0 = *b.get_unchecked(k * n + j);
-                let b1 = *b.get_unchecked((k + 1) * n + j);
-                let b2 = *b.get_unchecked((k + 2) * n + j);
-                let b3 = *b.get_unchecked((k + 3) * n + j);
-
-                // Form a NEON register from the column vector
-                let b_vec = vsetq_lane_f32::<0>(b0, vdupq_n_f32(0.0));
-                let b_vec = vsetq_lane_f32::<1>(b1, b_vec);
-                let b_vec = vsetq_lane_f32::<2>(b2, b_vec);
-                let b_vec = vsetq_lane_f32::<3>(b3, b_vec);
+                // Use the macro to load the column vector from matrix B
+                let b_vec = load_column_vector!(b, n, j, k);
 
                 // Intrinsic to perform (a * b) + c
                 sum = vfmaq_f32(sum, a_vec, b_vec);
